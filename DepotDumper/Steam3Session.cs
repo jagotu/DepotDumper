@@ -187,7 +187,7 @@ namespace DepotDumper
                 {
                     var app = app_value.Value;
 
-                    Console.WriteLine("Got AppInfo for {0}", app.ID);
+                    //Console.WriteLine("Got AppInfo for {0}", app.ID);
                     AppInfo.Add(app.ID, app);
                 }
 

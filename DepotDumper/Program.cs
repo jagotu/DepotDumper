@@ -102,6 +102,7 @@ namespace DepotDumper
                             }
                         }
 
+                        Console.WriteLine("Got AppInfo for {0}: {1}", appId, appName);
 
                         sw2.WriteLine($"{appId};{appName}");
 
