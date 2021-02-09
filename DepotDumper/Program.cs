@@ -1,9 +1,8 @@
-﻿using System;
+using System;
 using System.IO;
 using System.Security.Cryptography;
 using System.Threading;
 using System.Linq;
-
 using SteamKit2;
 using System.Collections.Generic;
 
@@ -11,10 +10,9 @@ namespace DepotDumper
 {
     class Program
     {
-
         public static StreamWriter sw;
         public static StreamWriter sw2;
-
+        private static Steam3Session steam3;
 
         static void Main(string[] args)
         {
@@ -43,7 +41,7 @@ namespace DepotDumper
             Config.SuppliedPassword = password;
             AccountSettingsStore.LoadFromFile("xxx");
 
-            var steam3 = new Steam3Session(
+            steam3 = new Steam3Session(
                new SteamUser.LogOnDetails()
                {
                    Username = user,
@@ -73,8 +71,6 @@ namespace DepotDumper
                 SteamApps.PICSProductInfoCallback.PICSProductInfo package;
                 if (steam3.PackageInfo.TryGetValue(license, out package) && package != null)
                 {
-                    var availableDepots = package.KeyValues["depotids"].Children.Select(x => x.AsUnsignedInteger()).ToList();
-
                     foreach (uint appId in package.KeyValues["appids"].Children.Select(x => x.AsUnsignedInteger()))
                     {
                         steam3.RequestAppInfo(appId);
@@ -87,10 +83,14 @@ namespace DepotDumper
 
                         KeyValue appinfo = app.KeyValues;
                         KeyValue depots = appinfo.Children.Where(c => c.Name == "depots").FirstOrDefault();
-
                         KeyValue common = appinfo.Children.Where(c => c.Name == "common").FirstOrDefault();
+                        KeyValue config = appinfo.Children.Where(c => c.Name == "config").FirstOrDefault();
 
-                        if (depots == null) continue;
+
+                        if (depots == null)
+                        {
+                            continue;
+                        }
 
                         string appName = "** UNKNOWN **";
                         if( common != null)
@@ -113,33 +113,59 @@ namespace DepotDumper
                             if (!uint.TryParse(depotSection.Name, out id) || id == uint.MaxValue)
                                 continue;
 
-                            if (availableDepots.Contains(id))
+                            if (depotSection.Children.Count == 0)
+                                continue;
+
+                            if (config == KeyValue.Invalid)
+                                continue;
+
+                            if (!AccountHasAccess(id))
+                                continue;
+
+                            int attempt = 1;
+                            while (!steam3.DepotKeys.ContainsKey(id) && attempt <= 3)
                             {
-                                steam3.RequestDepotKey(id, appId);
-                                if(!steam3.DepotKeys.ContainsKey(id))
+                                if (attempt > 1)
                                 {
-                                    Console.WriteLine("Trying second time...");
-                                    steam3.RequestDepotKey(id, appId);
-                                    if (!steam3.DepotKeys.ContainsKey(id))
-                                    {
-                                        Console.WriteLine("Trying third time...");
-                                        steam3.RequestDepotKey(id, appId);
-                                    }
+                                    Console.WriteLine($"Retrying... ({attempt})");
                                 }
+                                steam3.RequestDepotKey(id, appId);
+                                attempt++;
                             }
+
                         }
-
                     }
-
-
                 }
             }
 
             sw.Close();
             sw2.Close();
 
+            Console.WriteLine("\nDone!!");
+
         }
-        
+
+        static bool AccountHasAccess( uint depotId )
+        {
+            IEnumerable<uint> licenseQuery = steam3.Licenses.Select(x => x.PackageID).Distinct();
+            steam3.RequestPackageInfo(licenseQuery);
+
+            foreach (var license in licenseQuery)
+            {
+                SteamApps.PICSProductInfoCallback.PICSProductInfo package;
+                if (steam3.PackageInfo.TryGetValue(license, out package) && package != null)
+                {
+                    if (package.KeyValues["appids"].Children.Any(child => child.AsUnsignedInteger() == depotId))
+                        return true;
+
+                    if (package.KeyValues["depotids"].Children.Any(child => child.AsUnsignedInteger() == depotId))
+                        return true;
+                }
+            }
+
+            return false;
+        }
+
     }
 
 }
